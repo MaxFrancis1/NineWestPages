@@ -15,9 +15,9 @@ import type {
 } from './types'
 
 const mealTypes = ['breakfast', 'lunch', 'dinner'] as const
-const recurrenceOptions = ['none', 'daily', 'weekly'] as const
 
 type Tab = 'shopping' | 'recipes' | 'meal-plan' | 'todos' | 'group' | 'admin-suite'
+type ThemeMode = 'system' | 'light' | 'dark'
 
 function App() {
   const [loadingAuth, setLoadingAuth] = useState(true)
@@ -43,11 +43,30 @@ function App() {
   const [status, setStatus] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [loadingData, setLoadingData] = useState(false)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const stored = window.localStorage.getItem('theme-mode')
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      return stored
+    }
+    return 'system'
+  })
 
   const activeMembership = useMemo(
     () => memberships.find((m) => m.household_id === activeHouseholdId) ?? null,
     [memberships, activeHouseholdId],
   )
+
+  const getHouseholdName = (membership: Membership | null) => {
+    if (!membership?.households) {
+      return null
+    }
+
+    if (Array.isArray(membership.households)) {
+      return membership.households[0]?.name ?? null
+    }
+
+    return membership.households.name
+  }
 
   const hasMembership = memberships.length > 0
   const isSystemAdmin = systemRole === 'admin'
@@ -132,6 +151,29 @@ function App() {
 
     void loadAdminHouseholdData(adminHouseholdId)
   }, [isSystemAdmin, adminHouseholdId])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const applyTheme = () => {
+      const resolvedTheme =
+        themeMode === 'system' ? (media.matches ? 'dark' : 'light') : themeMode
+      document.documentElement.setAttribute('data-theme', resolvedTheme)
+    }
+
+    applyTheme()
+
+    const onSystemThemeChange = () => {
+      if (themeMode === 'system') {
+        applyTheme()
+      }
+    }
+
+    media.addEventListener('change', onSystemThemeChange)
+    window.localStorage.setItem('theme-mode', themeMode)
+
+    return () => media.removeEventListener('change', onSystemThemeChange)
+  }, [themeMode])
 
   async function loadUserRole(uid: string) {
     const { data, error: roleError } = await supabase
@@ -303,10 +345,10 @@ function App() {
     <div className="shell">
       <header className="hero">
         <div>
-          <h1>NineWest Household Hub</h1>
+          <h1>{getHouseholdName(activeMembership) ?? 'Household'}</h1>
           <p>
             {hasMembership
-              ? `${activeMembership?.households?.[0]?.name ?? 'Household'}  Signed in as ${userEmail}`
+              ? `Signed in as ${userEmail}`
               : `Signed in as ${userEmail}`}
           </p>
         </div>
@@ -319,11 +361,21 @@ function App() {
             >
               {memberships.map((membership) => (
                 <option key={membership.household_id} value={membership.household_id}>
-                  {membership.households?.[0]?.name ?? 'Unnamed'}
+                  {getHouseholdName(membership) ?? 'Unnamed'}
                 </option>
               ))}
             </select>
           ) : null}
+
+          <select
+            value={themeMode}
+            onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
+            aria-label="Theme mode"
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
 
           <button className="ghost" type="button" onClick={signOut}>
             Sign out
@@ -360,7 +412,7 @@ function App() {
               type="button"
               onClick={() => setActiveTab('todos')}
             >
-              Todos
+              To-Do's
             </button>
             <button
               className={activeTab === 'group' ? 'active' : ''}
@@ -606,6 +658,7 @@ function ShoppingSection({
   onRefresh: () => Promise<void>
   onError: (value: string) => void
 }) {
+  const [showAddModal, setShowAddModal] = useState(false)
   const [title, setTitle] = useState('')
   const [quantity, setQuantity] = useState('')
 
@@ -629,6 +682,7 @@ function ShoppingSection({
 
     setTitle('')
     setQuantity('')
+    setShowAddModal(false)
     await onRefresh()
   }
 
@@ -657,22 +711,12 @@ function ShoppingSection({
 
   return (
     <section className="card">
-      <h2>Shopping List</h2>
-      <form className="row" onSubmit={addItem}>
-        <input
-          type="text"
-          placeholder="Add item"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="Qty (optional)"
-          value={quantity}
-          onChange={(event) => setQuantity(event.target.value)}
-        />
-        <button type="submit">Add</button>
-      </form>
+      <div className="row section-head">
+        <h2>Shopping List</h2>
+        <button type="button" onClick={() => setShowAddModal(true)}>
+          Add Item
+        </button>
+      </div>
       <ul className="list">
         {items.map((item) => (
           <li key={item.id} className={item.is_complete ? 'done' : ''}>
@@ -687,6 +731,36 @@ function ShoppingSection({
           </li>
         ))}
       </ul>
+
+      {showAddModal ? (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Add Shopping Item</h3>
+            <form className="stack" onSubmit={addItem}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Add item"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Qty (optional)"
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+              />
+              <div className="row">
+                <button type="submit">Add</button>
+                <button type="button" className="ghost" onClick={() => setShowAddModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -705,7 +779,20 @@ function RecipesSection({
   const [title, setTitle] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
   const [servings, setServings] = useState('')
-  const [notes, setNotes] = useState('')
+  const [ingredients, setIngredients] = useState('')
+  const [method, setMethod] = useState('')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [search, setSearch] = useState('')
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
+
+  const filteredRecipes = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) {
+      return recipes
+    }
+
+    return recipes.filter((recipe) => recipe.title.toLowerCase().includes(query))
+  }, [recipes, search])
 
   const addRecipe = async (event: FormEvent) => {
     event.preventDefault()
@@ -720,7 +807,9 @@ function RecipesSection({
       title: title.trim(),
       source_url: sourceUrl.trim() || null,
       servings: Number.isFinite(parsedServings) && parsedServings > 0 ? parsedServings : null,
-      notes: notes.trim() || null,
+      ingredients: ingredients.trim() || null,
+      method: method.trim() || null,
+      notes: method.trim() || null,
     })
 
     if (error) {
@@ -731,7 +820,9 @@ function RecipesSection({
     setTitle('')
     setSourceUrl('')
     setServings('')
-    setNotes('')
+    setIngredients('')
+    setMethod('')
+    setShowCreateModal(false)
     await onRefresh()
   }
 
@@ -744,59 +835,125 @@ function RecipesSection({
     await onRefresh()
   }
 
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((current) => ({
+      ...current,
+      [id]: !current[id],
+    }))
+  }
+
   return (
     <section className="card">
-      <h2>Recipes</h2>
-      <form className="stack" onSubmit={addRecipe}>
-        <div className="row">
-          <input
-            type="text"
-            placeholder="Recipe name"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-          <input
-            type="number"
-            min={1}
-            placeholder="Servings"
-            value={servings}
-            onChange={(event) => setServings(event.target.value)}
-          />
-        </div>
-        <input
-          type="url"
-          placeholder="Source URL"
-          value={sourceUrl}
-          onChange={(event) => setSourceUrl(event.target.value)}
-        />
-        <textarea
-          placeholder="Notes"
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-          rows={3}
-        />
-        <button type="submit">Save Recipe</button>
-      </form>
+      <div className="row section-head">
+        <h2>Recipes</h2>
+        <button type="button" onClick={() => setShowCreateModal(true)}>
+          Add Recipe
+        </button>
+      </div>
+      <input
+        type="text"
+        placeholder="Search recipes by name"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
       <ul className="list">
-        {recipes.map((recipe) => (
-          <li key={recipe.id}>
-            <div>
-              <strong>{recipe.title}</strong>
-              {recipe.servings ? <span>  Serves {recipe.servings}</span> : null}
-              {recipe.source_url ? (
-                <span>
-                  {' '}
-                   <a href={recipe.source_url}>link</a>
-                </span>
-              ) : null}
-              {recipe.notes ? <p>{recipe.notes}</p> : null}
-            </div>
-            <button type="button" className="ghost" onClick={() => remove(recipe.id)}>
-              Remove
-            </button>
-          </li>
-        ))}
+        {filteredRecipes.map((recipe) => {
+          const isExpanded = Boolean(expandedIds[recipe.id])
+          return (
+            <li key={recipe.id} className="recipe-item">
+              <div className="recipe-main">
+                <div className="recipe-title-row">
+                  <strong>{recipe.title}</strong>
+                  {recipe.servings ? <span>Serves {recipe.servings}</span> : null}
+                </div>
+                {isExpanded ? (
+                  <div className="recipe-details">
+                    {recipe.source_url ? (
+                      <p>
+                        <strong>Source:</strong> <a href={recipe.source_url}>Open Link</a>
+                      </p>
+                    ) : null}
+                    {recipe.ingredients ? (
+                      <p>
+                        <strong>Ingredients:</strong>
+                        <br />
+                        {recipe.ingredients}
+                      </p>
+                    ) : null}
+                    {recipe.method || recipe.notes ? (
+                      <p>
+                        <strong>Method:</strong>
+                        <br />
+                        {recipe.method ?? recipe.notes}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="recipe-actions">
+                <button type="button" className="ghost" onClick={() => toggleExpanded(recipe.id)}>
+                  {isExpanded ? 'Collapse' : 'Expand'}
+                </button>
+                <button type="button" className="ghost" onClick={() => remove(recipe.id)}>
+                  Remove
+                </button>
+              </div>
+            </li>
+          )
+        })}
+        {filteredRecipes.length === 0 ? <li>No recipes found</li> : null}
       </ul>
+
+      {showCreateModal ? (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Add Recipe</h3>
+            <form className="stack" onSubmit={addRecipe}>
+              <div className="row">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Recipe name"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Servings"
+                  value={servings}
+                  onChange={(event) => setServings(event.target.value)}
+                />
+              </div>
+              <input
+                type="url"
+                placeholder="Source URL"
+                value={sourceUrl}
+                onChange={(event) => setSourceUrl(event.target.value)}
+              />
+              <textarea
+                placeholder="Ingredients (one per line)"
+                value={ingredients}
+                onChange={(event) => setIngredients(event.target.value)}
+                rows={4}
+              />
+              <textarea
+                placeholder="Method"
+                value={method}
+                onChange={(event) => setMethod(event.target.value)}
+                rows={3}
+              />
+              <div className="row">
+                <button type="submit">Save Recipe</button>
+                <button type="button" className="ghost" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -814,22 +971,44 @@ function MealPlanSection({
   onRefresh: () => Promise<void>
   onError: (value: string) => void
 }) {
-  const [mealDate, setMealDate] = useState(dayjs().format('YYYY-MM-DD'))
-  const [mealType, setMealType] = useState<(typeof mealTypes)[number]>('dinner')
-  const [recipeId, setRecipeId] = useState('')
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [editingSlot, setEditingSlot] = useState<{
+    mealDate: string
+    mealType: (typeof mealTypes)[number]
+  } | null>(null)
+  const [mealText, setMealText] = useState('')
+
+  const weekStart = useMemo(
+    () => dayjs().startOf('week').add(weekOffset, 'week'),
+    [weekOffset],
+  )
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => weekStart.add(index, 'day')),
+    [weekStart],
+  )
 
   const addMeal = async (event: FormEvent) => {
     event.preventDefault()
+    if (!editingSlot) {
+      return
+    }
 
-    const selectedRecipe = recipes.find((recipe) => recipe.id === recipeId)
+    const title = mealText.trim()
+    if (!title) {
+      return
+    }
+
+    const selectedRecipe = recipes.find(
+      (recipe) => recipe.title.toLowerCase() === title.toLowerCase(),
+    )
 
     const { error } = await supabase.from('meal_plan_entries').upsert(
       {
         household_id: householdId,
-        meal_date: mealDate,
-        meal_type: mealType,
+        meal_date: editingSlot.mealDate,
+        meal_type: editingSlot.mealType,
         recipe_id: selectedRecipe?.id ?? null,
-        recipe_title: selectedRecipe?.title ?? 'Unplanned meal',
+        recipe_title: selectedRecipe?.title ?? title,
       },
       { onConflict: 'household_id,meal_date,meal_type' },
     )
@@ -839,6 +1018,8 @@ function MealPlanSection({
       return
     }
 
+    setMealText('')
+    setEditingSlot(null)
     await onRefresh()
   }
 
@@ -851,48 +1032,123 @@ function MealPlanSection({
     await onRefresh()
   }
 
+  const openEditor = (
+    slot: { mealDate: string; mealType: (typeof mealTypes)[number] },
+    initialText: string,
+  ) => {
+    setEditingSlot(slot)
+    setMealText(initialText)
+  }
+
+  const closeEditor = () => {
+    setEditingSlot(null)
+    setMealText('')
+  }
+
   return (
     <section className="card">
       <h2>Meal Plan</h2>
-      <form className="row" onSubmit={addMeal}>
-        <input
-          type="date"
-          value={mealDate}
-          onChange={(event) => setMealDate(event.target.value)}
-          required
-        />
-        <select
-          value={mealType}
-          onChange={(event) => setMealType(event.target.value as (typeof mealTypes)[number])}
-        >
-          {mealTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-        <select value={recipeId} onChange={(event) => setRecipeId(event.target.value)}>
-          <option value="">Choose recipe</option>
-          {recipes.map((recipe) => (
-            <option key={recipe.id} value={recipe.id}>
-              {recipe.title}
-            </option>
-          ))}
-        </select>
-        <button type="submit">Plan Meal</button>
-      </form>
-      <ul className="list">
-        {entries.map((entry) => (
-          <li key={entry.id}>
-            <span>
-              <strong>{entry.meal_date}</strong>  {entry.meal_type}  {entry.recipe_title ?? 'Unplanned meal'}
-            </span>
-            <button type="button" className="ghost" onClick={() => remove(entry.id)}>
-              Remove
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="row week-controls">
+        <button type="button" className="ghost" onClick={() => setWeekOffset((value) => value - 1)}>
+          Previous Week
+        </button>
+        <p>
+          {weekStart.format('D MMM')} - {weekStart.add(6, 'day').format('D MMM')}
+        </p>
+        <button type="button" className="ghost" onClick={() => setWeekOffset(0)}>
+          This Week
+        </button>
+        <button type="button" className="ghost" onClick={() => setWeekOffset((value) => value + 1)}>
+          Next Week
+        </button>
+      </div>
+
+      <div className="meal-week-grid">
+        {weekDays.map((day) => {
+          const dayLabel = day.format('ddd')
+          const dayKey = day.format('YYYY-MM-DD')
+          return (
+            <article key={dayKey} className="meal-day-block">
+              <header>
+                <strong>{dayLabel}</strong>
+                <span>{day.format('D MMM')}</span>
+              </header>
+              {mealTypes.map((type) => {
+                const entry = entries.find(
+                  (mealEntry) => mealEntry.meal_date === dayKey && mealEntry.meal_type === type,
+                )
+                return (
+                  <div key={`${dayKey}-${type}`} className="meal-slot">
+                    <p className="meal-slot-title">{type}</p>
+                    {entry ? (
+                      <div className="meal-slot-content">
+                        <span>{entry.recipe_title ?? 'Unplanned meal'}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            openEditor({ mealDate: dayKey, mealType: type }, entry.recipe_title ?? '')
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button type="button" className="ghost" onClick={() => remove(entry.id)}>
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="meal-slot-content">
+                        <p className="meal-empty">Not planned</p>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            openEditor({ mealDate: dayKey, mealType: type }, '')
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </article>
+          )
+        })}
+      </div>
+
+      {editingSlot ? (
+        <div className="modal-overlay" onClick={closeEditor}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>
+              Edit {editingSlot.mealType} {dayjs(editingSlot.mealDate).format('D MMM')}
+            </h3>
+            <form className="stack" onSubmit={addMeal}>
+              <input
+                type="text"
+                list="recipe-suggestions"
+                autoFocus
+                placeholder="Type meal or recipe"
+                value={mealText}
+                onChange={(event) => setMealText(event.target.value)}
+                required
+              />
+              <datalist id="recipe-suggestions">
+                {recipes.map((recipe) => (
+                  <option key={recipe.id} value={recipe.title} />
+                ))}
+              </datalist>
+              <div className="row">
+                <button type="submit">Add</button>
+                <button type="button" className="ghost" onClick={closeEditor}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -908,23 +1164,64 @@ function TodoSection({
   onRefresh: () => Promise<void>
   onError: (value: string) => void
 }) {
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [targetList, setTargetList] = useState<'weekly' | 'adhoc'>('adhoc')
   const [title, setTitle] = useState('')
-  const [dueDate, setDueDate] = useState('')
-  const [recurrence, setRecurrence] = useState<(typeof recurrenceOptions)[number]>('none')
-  const [notes, setNotes] = useState('')
+
+  const weeklyTodos = todos.filter((todo) => todo.recurrence === 'weekly')
+  const adhocTodos = todos.filter((todo) => todo.recurrence !== 'weekly')
+
+  useEffect(() => {
+    const maybeResetWeekly = async () => {
+      const isSunday = dayjs().day() === 0
+      const hasCompletedWeekly = weeklyTodos.some((todo) => todo.is_complete)
+      const weekKey = dayjs().startOf('week').format('YYYY-MM-DD')
+      const resetKey = `weekly-reset:${householdId}`
+      const alreadyResetThisWeek = window.localStorage.getItem(resetKey) === weekKey
+
+      if (!isSunday || !hasCompletedWeekly || alreadyResetThisWeek) {
+        return
+      }
+
+      const { error } = await supabase
+        .from('todos')
+        .update({ is_complete: false })
+        .eq('household_id', householdId)
+        .eq('recurrence', 'weekly')
+        .eq('is_complete', true)
+
+      if (error) {
+        onError(error.message)
+        return
+      }
+
+      window.localStorage.setItem(resetKey, weekKey)
+
+      await onRefresh()
+    }
+
+    void maybeResetWeekly()
+  }, [householdId, weeklyTodos, onRefresh, onError])
+
+  const openAddModal = (listType: 'weekly' | 'adhoc') => {
+    setTargetList(listType)
+    setTitle('')
+    setShowAddModal(true)
+  }
 
   const addTodo = async (event: FormEvent) => {
     event.preventDefault()
-    if (!title.trim()) {
+    const trimmed = title.trim()
+    if (!trimmed) {
       return
     }
 
     const { error } = await supabase.from('todos').insert({
       household_id: householdId,
-      title: title.trim(),
-      due_date: dueDate || null,
-      recurrence,
-      notes: notes.trim() || null,
+      title: trimmed,
+      recurrence: targetList === 'weekly' ? 'weekly' : 'none',
+      due_date: null,
+      notes: null,
     })
 
     if (error) {
@@ -933,18 +1230,26 @@ function TodoSection({
     }
 
     setTitle('')
-    setDueDate('')
-    setRecurrence('none')
-    setNotes('')
+    setShowAddModal(false)
     await onRefresh()
   }
 
-  const toggle = async (todo: TodoItem) => {
+  const toggleWeekly = async (todo: TodoItem) => {
     const { error } = await supabase
       .from('todos')
       .update({ is_complete: !todo.is_complete })
       .eq('id', todo.id)
 
+    if (error) {
+      onError(error.message)
+      return
+    }
+
+    await onRefresh()
+  }
+
+  const clearAdhocOnCheck = async (todo: TodoItem) => {
+    const { error } = await supabase.from('todos').delete().eq('id', todo.id)
     if (error) {
       onError(error.message)
       return
@@ -964,54 +1269,78 @@ function TodoSection({
 
   return (
     <section className="card">
-      <h2>Weekly / Daily Todos</h2>
-      <form className="stack" onSubmit={addTodo}>
-        <div className="row">
-          <input
-            type="text"
-            value={title}
-            placeholder="Todo"
-            onChange={(event) => setTitle(event.target.value)}
-          />
-          <select
-            value={recurrence}
-            onChange={(event) => setRecurrence(event.target.value as (typeof recurrenceOptions)[number])}
-          >
-            {recurrenceOptions.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
-          />
-        </div>
-        <textarea
-          rows={2}
-          value={notes}
-          placeholder="Notes"
-          onChange={(event) => setNotes(event.target.value)}
-        />
-        <button type="submit">Add Todo</button>
-      </form>
-      <ul className="list">
-        {todos.map((todo) => (
-          <li key={todo.id} className={todo.is_complete ? 'done' : ''}>
-            <label>
-              <input type="checkbox" checked={todo.is_complete} onChange={() => toggle(todo)} />
-              {todo.title}
-              {todo.recurrence !== 'none' ? ` (${todo.recurrence})` : ''}
-              {todo.due_date ? `  due ${todo.due_date}` : ''}
-            </label>
-            <button type="button" className="ghost" onClick={() => remove(todo.id)}>
-              Remove
+      <h2>To-Do's</h2>
+      <div className="todo-columns">
+        <article className="todo-column">
+          <div className="todo-column-header">
+            <h3>Weekly</h3>
+            <button type="button" onClick={() => openAddModal('weekly')}>
+              Add
             </button>
-          </li>
-        ))}
-      </ul>
+          </div>
+          <ul className="list checklist-list">
+            {weeklyTodos.map((todo) => (
+              <li key={todo.id} className={todo.is_complete ? 'done' : ''}>
+                <label>
+                  <input type="checkbox" checked={todo.is_complete} onChange={() => toggleWeekly(todo)} />
+                  {todo.title}
+                </label>
+                <button type="button" className="ghost" onClick={() => remove(todo.id)}>
+                  Delete
+                </button>
+              </li>
+            ))}
+            {weeklyTodos.length === 0 ? <li>No weekly tasks yet</li> : null}
+          </ul>
+        </article>
+
+        <article className="todo-column">
+          <div className="todo-column-header">
+            <h3>Ad-hoc</h3>
+            <button type="button" onClick={() => openAddModal('adhoc')}>
+              Add
+            </button>
+          </div>
+          <ul className="list checklist-list">
+            {adhocTodos.map((todo) => (
+              <li key={todo.id}>
+                <label>
+                  <input type="checkbox" checked={false} onChange={() => clearAdhocOnCheck(todo)} />
+                  {todo.title}
+                </label>
+                <button type="button" className="ghost" onClick={() => remove(todo.id)}>
+                  Delete
+                </button>
+              </li>
+            ))}
+            {adhocTodos.length === 0 ? <li>No ad-hoc tasks right now</li> : null}
+          </ul>
+        </article>
+      </div>
+
+      {showAddModal ? (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Add {targetList === 'weekly' ? 'Weekly' : 'Ad-hoc'} To-Do</h3>
+            <form className="stack" onSubmit={addTodo}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="What needs doing?"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+              />
+              <div className="row">
+                <button type="submit">Add</button>
+                <button type="button" className="ghost" onClick={() => setShowAddModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -1055,6 +1384,20 @@ function AdminSuite({
 }) {
   const [newHouseholdName, setNewHouseholdName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
+  const [showHouseholdModal, setShowHouseholdModal] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
+
+  const selectedHousehold = useMemo(
+    () => households.find((household) => household.id === selectedHouseholdId) ?? null,
+    [households, selectedHouseholdId],
+  )
+
+  useEffect(() => {
+    setShowDeleteConfirm(false)
+    setDeleteConfirmName('')
+  }, [selectedHouseholdId])
 
   const createHousehold = async (event: FormEvent) => {
     event.preventDefault()
@@ -1072,6 +1415,7 @@ function AdminSuite({
     }
 
     setNewHouseholdName('')
+    setShowHouseholdModal(false)
     onStatus('Household created.')
     await onRefreshHouseholds()
   }
@@ -1086,6 +1430,8 @@ function AdminSuite({
     onStatus('Household deleted.')
     await onRefreshHouseholds()
     onSelectHousehold('')
+    setShowDeleteConfirm(false)
+    setDeleteConfirmName('')
   }
 
   const createInvite = async (event: FormEvent) => {
@@ -1112,6 +1458,7 @@ function AdminSuite({
     await navigator.clipboard.writeText(inviteLink)
     onStatus(`Invite link copied for ${inviteEmail}.`)
     setInviteEmail('')
+    setShowInviteModal(false)
     await onRefreshSelected()
   }
 
@@ -1138,15 +1485,9 @@ function AdminSuite({
       <h2>Admin Suite</h2>
       <p>System admins can create households, invite members, and manage membership.</p>
 
-      <form className="row" onSubmit={createHousehold}>
-        <input
-          type="text"
-          placeholder="New household name"
-          value={newHouseholdName}
-          onChange={(event) => setNewHouseholdName(event.target.value)}
-        />
-        <button type="submit">Create Household</button>
-      </form>
+      <button type="button" onClick={() => setShowHouseholdModal(true)}>
+        Create Household
+      </button>
 
       <div className="row">
         <select value={selectedHouseholdId} onChange={(event) => onSelectHousehold(event.target.value)}>
@@ -1158,23 +1499,45 @@ function AdminSuite({
           ))}
         </select>
         {selectedHouseholdId ? (
-          <button type="button" className="ghost" onClick={() => deleteHousehold(selectedHouseholdId)}>
-            Delete Household
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setShowDeleteConfirm((current) => !current)}
+          >
+            {showDeleteConfirm ? 'Cancel Delete' : 'Delete Household'}
           </button>
         ) : null}
       </div>
 
+      {selectedHouseholdId && showDeleteConfirm && selectedHousehold ? (
+        <div className="card delete-guard">
+          <p>
+            Type <strong>{selectedHousehold.name}</strong> to confirm deletion.
+          </p>
+          <div className="row">
+            <input
+              type="text"
+              placeholder="Confirm household name"
+              value={deleteConfirmName}
+              onChange={(event) => setDeleteConfirmName(event.target.value)}
+            />
+            <button
+              type="button"
+              className="danger"
+              disabled={deleteConfirmName.trim() !== selectedHousehold.name}
+              onClick={() => deleteHousehold(selectedHouseholdId)}
+            >
+              Confirm Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {selectedHouseholdId ? (
         <>
-          <form className="row" onSubmit={createInvite}>
-            <input
-              type="email"
-              placeholder="Invite email"
-              value={inviteEmail}
-              onChange={(event) => setInviteEmail(event.target.value)}
-            />
-            <button type="submit">Create Invite</button>
-          </form>
+          <button type="button" onClick={() => setShowInviteModal(true)}>
+            Create Invite
+          </button>
 
           <h3>Members</h3>
           <ul className="list">
@@ -1204,6 +1567,54 @@ function AdminSuite({
             {selectedInvites.length === 0 ? <li>No pending invites</li> : null}
           </ul>
         </>
+      ) : null}
+
+      {showHouseholdModal ? (
+        <div className="modal-overlay" onClick={() => setShowHouseholdModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Create Household</h3>
+            <form className="stack" onSubmit={createHousehold}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="New household name"
+                value={newHouseholdName}
+                onChange={(event) => setNewHouseholdName(event.target.value)}
+                required
+              />
+              <div className="row">
+                <button type="submit">Create</button>
+                <button type="button" className="ghost" onClick={() => setShowHouseholdModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showInviteModal && selectedHouseholdId ? (
+        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Create Invite</h3>
+            <form className="stack" onSubmit={createInvite}>
+              <input
+                type="email"
+                autoFocus
+                placeholder="Invite email"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                required
+              />
+              <div className="row">
+                <button type="submit">Create Invite</button>
+                <button type="button" className="ghost" onClick={() => setShowInviteModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       ) : null}
     </section>
   )

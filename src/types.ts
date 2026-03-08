@@ -3,9 +3,14 @@ export type SystemRole = 'admin' | 'member'
 export type Membership = {
   household_id: string
   member_email: string
-  households: Array<{
+  households:
+    | Array<{
+        name: string
+      }>
+    | {
     name: string
-  }> | null
+      }
+    | null
 }
 
 export type ShoppingItem = {
@@ -20,6 +25,8 @@ export type Recipe = {
   id: string
   household_id: string
   title: string
+  ingredients: string | null
+  method: string | null
   notes: string | null
   source_url: string | null
   servings: number | null
