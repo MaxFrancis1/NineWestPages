@@ -15,9 +15,9 @@ import type {
 } from './types'
 
 const mealTypes = ['breakfast', 'lunch', 'dinner'] as const
-const recurrenceOptions = ['none', 'daily', 'weekly'] as const
 
 type Tab = 'shopping' | 'recipes' | 'meal-plan' | 'todos' | 'group' | 'admin-suite'
+type ThemeMode = 'system' | 'light' | 'dark'
 
 function App() {
   const [loadingAuth, setLoadingAuth] = useState(true)
@@ -43,11 +43,30 @@ function App() {
   const [status, setStatus] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [loadingData, setLoadingData] = useState(false)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const stored = window.localStorage.getItem('theme-mode')
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      return stored
+    }
+    return 'system'
+  })
 
   const activeMembership = useMemo(
     () => memberships.find((m) => m.household_id === activeHouseholdId) ?? null,
     [memberships, activeHouseholdId],
   )
+
+  const getHouseholdName = (membership: Membership | null) => {
+    if (!membership?.households) {
+      return null
+    }
+
+    if (Array.isArray(membership.households)) {
+      return membership.households[0]?.name ?? null
+    }
+
+    return membership.households.name
+  }
 
   const hasMembership = memberships.length > 0
   const isSystemAdmin = systemRole === 'admin'
@@ -132,6 +151,29 @@ function App() {
 
     void loadAdminHouseholdData(adminHouseholdId)
   }, [isSystemAdmin, adminHouseholdId])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+
+    const applyTheme = () => {
+      const resolvedTheme =
+        themeMode === 'system' ? (media.matches ? 'dark' : 'light') : themeMode
+      document.documentElement.setAttribute('data-theme', resolvedTheme)
+    }
+
+    applyTheme()
+
+    const onSystemThemeChange = () => {
+      if (themeMode === 'system') {
+        applyTheme()
+      }
+    }
+
+    media.addEventListener('change', onSystemThemeChange)
+    window.localStorage.setItem('theme-mode', themeMode)
+
+    return () => media.removeEventListener('change', onSystemThemeChange)
+  }, [themeMode])
 
   async function loadUserRole(uid: string) {
     const { data, error: roleError } = await supabase
@@ -303,7 +345,7 @@ function App() {
     <div className="shell">
       <header className="hero">
         <div>
-          <h1>{activeMembership?.households?.[0]?.name ?? 'Household'}</h1>
+          <h1>{getHouseholdName(activeMembership) ?? 'Household'}</h1>
           <p>
             {hasMembership
               ? `Signed in as ${userEmail}`
@@ -319,11 +361,21 @@ function App() {
             >
               {memberships.map((membership) => (
                 <option key={membership.household_id} value={membership.household_id}>
-                  {membership.households?.[0]?.name ?? 'Unnamed'}
+                  {getHouseholdName(membership) ?? 'Unnamed'}
                 </option>
               ))}
             </select>
           ) : null}
+
+          <select
+            value={themeMode}
+            onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
+            aria-label="Theme mode"
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
 
           <button className="ghost" type="button" onClick={signOut}>
             Sign out
@@ -1030,23 +1082,64 @@ function TodoSection({
   onRefresh: () => Promise<void>
   onError: (value: string) => void
 }) {
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [targetList, setTargetList] = useState<'weekly' | 'adhoc'>('adhoc')
   const [title, setTitle] = useState('')
-  const [dueDate, setDueDate] = useState('')
-  const [recurrence, setRecurrence] = useState<(typeof recurrenceOptions)[number]>('none')
-  const [notes, setNotes] = useState('')
+
+  const weeklyTodos = todos.filter((todo) => todo.recurrence === 'weekly')
+  const adhocTodos = todos.filter((todo) => todo.recurrence !== 'weekly')
+
+  useEffect(() => {
+    const maybeResetWeekly = async () => {
+      const isSunday = dayjs().day() === 0
+      const hasCompletedWeekly = weeklyTodos.some((todo) => todo.is_complete)
+      const weekKey = dayjs().startOf('week').format('YYYY-MM-DD')
+      const resetKey = `weekly-reset:${householdId}`
+      const alreadyResetThisWeek = window.localStorage.getItem(resetKey) === weekKey
+
+      if (!isSunday || !hasCompletedWeekly || alreadyResetThisWeek) {
+        return
+      }
+
+      const { error } = await supabase
+        .from('todos')
+        .update({ is_complete: false })
+        .eq('household_id', householdId)
+        .eq('recurrence', 'weekly')
+        .eq('is_complete', true)
+
+      if (error) {
+        onError(error.message)
+        return
+      }
+
+      window.localStorage.setItem(resetKey, weekKey)
+
+      await onRefresh()
+    }
+
+    void maybeResetWeekly()
+  }, [householdId, weeklyTodos, onRefresh, onError])
+
+  const openAddModal = (listType: 'weekly' | 'adhoc') => {
+    setTargetList(listType)
+    setTitle('')
+    setShowAddModal(true)
+  }
 
   const addTodo = async (event: FormEvent) => {
     event.preventDefault()
-    if (!title.trim()) {
+    const trimmed = title.trim()
+    if (!trimmed) {
       return
     }
 
     const { error } = await supabase.from('todos').insert({
       household_id: householdId,
-      title: title.trim(),
-      due_date: dueDate || null,
-      recurrence,
-      notes: notes.trim() || null,
+      title: trimmed,
+      recurrence: targetList === 'weekly' ? 'weekly' : 'none',
+      due_date: null,
+      notes: null,
     })
 
     if (error) {
@@ -1055,18 +1148,26 @@ function TodoSection({
     }
 
     setTitle('')
-    setDueDate('')
-    setRecurrence('none')
-    setNotes('')
+    setShowAddModal(false)
     await onRefresh()
   }
 
-  const toggle = async (todo: TodoItem) => {
+  const toggleWeekly = async (todo: TodoItem) => {
     const { error } = await supabase
       .from('todos')
       .update({ is_complete: !todo.is_complete })
       .eq('id', todo.id)
 
+    if (error) {
+      onError(error.message)
+      return
+    }
+
+    await onRefresh()
+  }
+
+  const clearAdhocOnCheck = async (todo: TodoItem) => {
+    const { error } = await supabase.from('todos').delete().eq('id', todo.id)
     if (error) {
       onError(error.message)
       return
@@ -1086,54 +1187,78 @@ function TodoSection({
 
   return (
     <section className="card">
-      <h2>Weekly / Daily To-Do's</h2>
-      <form className="stack" onSubmit={addTodo}>
-        <div className="row">
-          <input
-            type="text"
-            value={title}
-            placeholder="Todo"
-            onChange={(event) => setTitle(event.target.value)}
-          />
-          <select
-            value={recurrence}
-            onChange={(event) => setRecurrence(event.target.value as (typeof recurrenceOptions)[number])}
-          >
-            {recurrenceOptions.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(event) => setDueDate(event.target.value)}
-          />
-        </div>
-        <textarea
-          rows={2}
-          value={notes}
-          placeholder="Notes"
-          onChange={(event) => setNotes(event.target.value)}
-        />
-        <button type="submit">Add Todo</button>
-      </form>
-      <ul className="list">
-        {todos.map((todo) => (
-          <li key={todo.id} className={todo.is_complete ? 'done' : ''}>
-            <label>
-              <input type="checkbox" checked={todo.is_complete} onChange={() => toggle(todo)} />
-              {todo.title}
-              {todo.recurrence !== 'none' ? ` (${todo.recurrence})` : ''}
-              {todo.due_date ? `  due ${todo.due_date}` : ''}
-            </label>
-            <button type="button" className="ghost" onClick={() => remove(todo.id)}>
-              Remove
+      <h2>To-Do's</h2>
+      <div className="todo-columns">
+        <article className="todo-column">
+          <div className="todo-column-header">
+            <h3>Weekly</h3>
+            <button type="button" onClick={() => openAddModal('weekly')}>
+              Add
             </button>
-          </li>
-        ))}
-      </ul>
+          </div>
+          <ul className="list checklist-list">
+            {weeklyTodos.map((todo) => (
+              <li key={todo.id} className={todo.is_complete ? 'done' : ''}>
+                <label>
+                  <input type="checkbox" checked={todo.is_complete} onChange={() => toggleWeekly(todo)} />
+                  {todo.title}
+                </label>
+                <button type="button" className="ghost" onClick={() => remove(todo.id)}>
+                  Delete
+                </button>
+              </li>
+            ))}
+            {weeklyTodos.length === 0 ? <li>No weekly tasks yet</li> : null}
+          </ul>
+        </article>
+
+        <article className="todo-column">
+          <div className="todo-column-header">
+            <h3>Ad-hoc</h3>
+            <button type="button" onClick={() => openAddModal('adhoc')}>
+              Add
+            </button>
+          </div>
+          <ul className="list checklist-list">
+            {adhocTodos.map((todo) => (
+              <li key={todo.id}>
+                <label>
+                  <input type="checkbox" checked={false} onChange={() => clearAdhocOnCheck(todo)} />
+                  {todo.title}
+                </label>
+                <button type="button" className="ghost" onClick={() => remove(todo.id)}>
+                  Delete
+                </button>
+              </li>
+            ))}
+            {adhocTodos.length === 0 ? <li>No ad-hoc tasks right now</li> : null}
+          </ul>
+        </article>
+      </div>
+
+      {showAddModal ? (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Add {targetList === 'weekly' ? 'Weekly' : 'Ad-hoc'} To-Do</h3>
+            <form className="stack" onSubmit={addTodo}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="What needs doing?"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+              />
+              <div className="row">
+                <button type="submit">Add</button>
+                <button type="button" className="ghost" onClick={() => setShowAddModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
