@@ -1,0 +1,241 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap');
+
+:root {
+  --bg-top: #f5f8ff;
+  --bg-bottom: #fef7ef;
+  --card: rgba(255, 255, 255, 0.85);
+  --line: #d9e2f1;
+  --ink: #183153;
+  --ink-muted: #4f617b;
+  --brand: #0e8f6b;
+  --brand-strong: #05654a;
+  --warning: #ad2f28;
+  --shadow: 0 12px 30px rgba(24, 49, 83, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--ink);
+  background: linear-gradient(150deg, var(--bg-top), var(--bg-bottom));
+  font-family: 'Source Sans 3', sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+button {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+a {
+  color: var(--brand-strong);
+}
+
+.shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-shell {
+  max-width: 760px;
+}
+
+.hero {
+  padding: 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  box-shadow: var(--shadow);
+  animation: rise 240ms ease-out;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 1.7rem;
+}
+
+.hero p {
+  margin: 0.3rem 0 0;
+  color: var(--ink-muted);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tabs button {
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 999px;
+  color: var(--ink);
+  padding: 0.55rem 0.95rem;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--card);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  animation: rise 220ms ease-out;
+}
+
+.card h2,
+.card h3 {
+  margin-top: 0;
+}
+
+.row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.stack {
+  display: grid;
+  gap: 0.6rem;
+}
+
+input,
+select,
+textarea,
+button {
+  font-size: 0.98rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  padding: 0.55rem 0.75rem;
+}
+
+input,
+select,
+textarea {
+  min-width: 160px;
+  background: white;
+}
+
+button {
+  cursor: pointer;
+  border-color: var(--brand);
+  background: var(--brand);
+  color: white;
+}
+
+button:hover {
+  background: var(--brand-strong);
+}
+
+button.ghost {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0.7rem 0 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.list li {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem;
+}
+
+.list li.done {
+  opacity: 0.66;
+  text-decoration: line-through;
+}
+
+.list label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.statusbar {
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.6rem 0.9rem;
+}
+
+.status,
+.error {
+  margin: 0;
+}
+
+.status {
+  color: var(--brand-strong);
+}
+
+.error {
+  color: var(--warning);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 760px) {
+  .hero {
+    flex-direction: column;
+  }
+
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    width: 100%;
+  }
+
+  .tabs button {
+    flex: 1 1 44%;
+  }
+}
