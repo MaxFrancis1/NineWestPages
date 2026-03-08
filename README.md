@@ -90,6 +90,8 @@ Workflow is included at `.github/workflows/deploy-pages.yml`.
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
+If you store secrets under the `github-pages` Environment instead of repository-wide secrets, this workflow supports that as well.
+
 ### Required repo settings
 
 1. In GitHub repo: `Settings` -> `Pages`.
@@ -97,6 +99,20 @@ Workflow is included at `.github/workflows/deploy-pages.yml`.
 3. Push to `main` branch.
 
 The app is configured with Vite `base` for repository Pages path (`/NineWestPages/`) when running in GitHub Actions.
+
+### Troubleshooting: Missing Supabase environment variables at runtime
+
+If the site loads with:
+
+`Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.`
+
+then the build ran without those secrets. Verify:
+
+1. `Settings` -> `Secrets and variables` -> `Actions` has both secrets, or `Settings` -> `Environments` -> `github-pages` has both.
+2. Secret names match exactly:
+	- `VITE_SUPABASE_URL`
+	- `VITE_SUPABASE_ANON_KEY`
+3. Re-run the latest `Deploy to GitHub Pages` workflow after saving secrets.
 
 ## Notes
 
