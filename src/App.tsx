@@ -1384,6 +1384,8 @@ function AdminSuite({
 }) {
   const [newHouseholdName, setNewHouseholdName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
+  const [generatedInviteLink, setGeneratedInviteLink] = useState('')
+  const [generatedInviteToken, setGeneratedInviteToken] = useState('')
   const [showHouseholdModal, setShowHouseholdModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -1455,11 +1457,19 @@ function AdminSuite({
     }
 
     const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${data.invite_token}`
-    await navigator.clipboard.writeText(inviteLink)
-    onStatus(`Invite link copied for ${inviteEmail}.`)
-    setInviteEmail('')
-    setShowInviteModal(false)
+    setGeneratedInviteLink(inviteLink)
+    setGeneratedInviteToken(data.invite_token)
     await onRefreshSelected()
+  }
+
+  const copyInviteLink = async (token: string) => {
+    const link = `${window.location.origin}${window.location.pathname}?invite=${token}`
+    try {
+      await navigator.clipboard.writeText(link)
+      onStatus('Invite link copied to clipboard.')
+    } catch {
+      onError('Could not copy to clipboard. Please copy the link manually.')
+    }
   }
 
   const cancelInvite = async (id: string) => {
@@ -1559,6 +1569,9 @@ function AdminSuite({
                   {invite.email}
                   {invite.expires_at ? `  expires ${dayjs(invite.expires_at).format('YYYY-MM-DD')}` : ''}
                 </span>
+                <button type="button" className="ghost" onClick={() => copyInviteLink(invite.invite_token)}>
+                  Copy URL
+                </button>
                 <button type="button" className="ghost" onClick={() => cancelInvite(invite.id)}>
                   Cancel
                 </button>
@@ -1594,25 +1607,70 @@ function AdminSuite({
       ) : null}
 
       {showInviteModal && selectedHouseholdId ? (
-        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setShowInviteModal(false)
+            setGeneratedInviteLink('')
+            setGeneratedInviteToken('')
+            setInviteEmail('')
+          }}
+        >
           <div className="modal-card" onClick={(event) => event.stopPropagation()}>
             <h3>Create Invite</h3>
-            <form className="stack" onSubmit={createInvite}>
-              <input
-                type="email"
-                autoFocus
-                placeholder="Invite email"
-                value={inviteEmail}
-                onChange={(event) => setInviteEmail(event.target.value)}
-                required
-              />
-              <div className="row">
-                <button type="submit">Create Invite</button>
-                <button type="button" className="ghost" onClick={() => setShowInviteModal(false)}>
-                  Cancel
-                </button>
+            {generatedInviteLink ? (
+              <div className="stack">
+                <p>Invite created for <strong>{inviteEmail}</strong>. Copy the link below and share it:</p>
+                <input
+                  aria-label="Invite link"
+                  type="text"
+                  readOnly
+                  value={generatedInviteLink}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <div className="row">
+                  <button type="button" onClick={() => copyInviteLink(generatedInviteToken)}>
+                    Copy Link
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setShowInviteModal(false)
+                      setGeneratedInviteLink('')
+                      setGeneratedInviteToken('')
+                      setInviteEmail('')
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
-            </form>
+            ) : (
+              <form className="stack" onSubmit={createInvite}>
+                <input
+                  type="email"
+                  autoFocus
+                  placeholder="Invite email"
+                  value={inviteEmail}
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  required
+                />
+                <div className="row">
+                  <button type="submit">Create Invite</button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setShowInviteModal(false)
+                      setInviteEmail('')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       ) : null}
