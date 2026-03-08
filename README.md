@@ -50,6 +50,7 @@ Run migration file:
 - `supabase/migrations/20260308_init_household_schema.sql`
 - `supabase/migrations/20260308_fix_rls_recursion.sql`
 - `supabase/migrations/20260308_system_admin_model.sql`
+- `supabase/migrations/20260308_recipe_fields.sql`
 
 You can run it either with Supabase CLI (`supabase db push`) or paste into SQL Editor.
 

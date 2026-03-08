@@ -20,6 +20,8 @@ export type Recipe = {
   id: string
   household_id: string
   title: string
+  ingredients: string | null
+  method: string | null
   notes: string | null
   source_url: string | null
   servings: number | null

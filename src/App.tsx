@@ -303,10 +303,10 @@ function App() {
     <div className="shell">
       <header className="hero">
         <div>
-          <h1>NineWest Household Hub</h1>
+          <h1>{activeMembership?.households?.[0]?.name ?? 'Household'}</h1>
           <p>
             {hasMembership
-              ? `${activeMembership?.households?.[0]?.name ?? 'Household'}  Signed in as ${userEmail}`
+              ? `Signed in as ${userEmail}`
               : `Signed in as ${userEmail}`}
           </p>
         </div>
@@ -360,7 +360,7 @@ function App() {
               type="button"
               onClick={() => setActiveTab('todos')}
             >
-              Todos
+              To-Do's
             </button>
             <button
               className={activeTab === 'group' ? 'active' : ''}
@@ -705,7 +705,8 @@ function RecipesSection({
   const [title, setTitle] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
   const [servings, setServings] = useState('')
-  const [notes, setNotes] = useState('')
+  const [ingredients, setIngredients] = useState('')
+  const [method, setMethod] = useState('')
 
   const addRecipe = async (event: FormEvent) => {
     event.preventDefault()
@@ -720,7 +721,9 @@ function RecipesSection({
       title: title.trim(),
       source_url: sourceUrl.trim() || null,
       servings: Number.isFinite(parsedServings) && parsedServings > 0 ? parsedServings : null,
-      notes: notes.trim() || null,
+      ingredients: ingredients.trim() || null,
+      method: method.trim() || null,
+      notes: method.trim() || null,
     })
 
     if (error) {
@@ -731,7 +734,8 @@ function RecipesSection({
     setTitle('')
     setSourceUrl('')
     setServings('')
-    setNotes('')
+    setIngredients('')
+    setMethod('')
     await onRefresh()
   }
 
@@ -770,9 +774,15 @@ function RecipesSection({
           onChange={(event) => setSourceUrl(event.target.value)}
         />
         <textarea
-          placeholder="Notes"
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
+          placeholder="Ingredients (one per line)"
+          value={ingredients}
+          onChange={(event) => setIngredients(event.target.value)}
+          rows={4}
+        />
+        <textarea
+          placeholder="Method"
+          value={method}
+          onChange={(event) => setMethod(event.target.value)}
           rows={3}
         />
         <button type="submit">Save Recipe</button>
@@ -789,7 +799,20 @@ function RecipesSection({
                    <a href={recipe.source_url}>link</a>
                 </span>
               ) : null}
-              {recipe.notes ? <p>{recipe.notes}</p> : null}
+              {recipe.ingredients ? (
+                <p>
+                  <strong>Ingredients:</strong>
+                  <br />
+                  {recipe.ingredients}
+                </p>
+              ) : null}
+              {recipe.method || recipe.notes ? (
+                <p>
+                  <strong>Method:</strong>
+                  <br />
+                  {recipe.method ?? recipe.notes}
+                </p>
+              ) : null}
             </div>
             <button type="button" className="ghost" onClick={() => remove(recipe.id)}>
               Remove
@@ -814,22 +837,44 @@ function MealPlanSection({
   onRefresh: () => Promise<void>
   onError: (value: string) => void
 }) {
-  const [mealDate, setMealDate] = useState(dayjs().format('YYYY-MM-DD'))
-  const [mealType, setMealType] = useState<(typeof mealTypes)[number]>('dinner')
-  const [recipeId, setRecipeId] = useState('')
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [editingSlot, setEditingSlot] = useState<{
+    mealDate: string
+    mealType: (typeof mealTypes)[number]
+  } | null>(null)
+  const [mealText, setMealText] = useState('')
+
+  const weekStart = useMemo(
+    () => dayjs().startOf('week').add(weekOffset, 'week'),
+    [weekOffset],
+  )
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => weekStart.add(index, 'day')),
+    [weekStart],
+  )
 
   const addMeal = async (event: FormEvent) => {
     event.preventDefault()
+    if (!editingSlot) {
+      return
+    }
 
-    const selectedRecipe = recipes.find((recipe) => recipe.id === recipeId)
+    const title = mealText.trim()
+    if (!title) {
+      return
+    }
+
+    const selectedRecipe = recipes.find(
+      (recipe) => recipe.title.toLowerCase() === title.toLowerCase(),
+    )
 
     const { error } = await supabase.from('meal_plan_entries').upsert(
       {
         household_id: householdId,
-        meal_date: mealDate,
-        meal_type: mealType,
+        meal_date: editingSlot.mealDate,
+        meal_type: editingSlot.mealType,
         recipe_id: selectedRecipe?.id ?? null,
-        recipe_title: selectedRecipe?.title ?? 'Unplanned meal',
+        recipe_title: selectedRecipe?.title ?? title,
       },
       { onConflict: 'household_id,meal_date,meal_type' },
     )
@@ -839,6 +884,8 @@ function MealPlanSection({
       return
     }
 
+    setMealText('')
+    setEditingSlot(null)
     await onRefresh()
   }
 
@@ -851,48 +898,123 @@ function MealPlanSection({
     await onRefresh()
   }
 
+  const openEditor = (
+    slot: { mealDate: string; mealType: (typeof mealTypes)[number] },
+    initialText: string,
+  ) => {
+    setEditingSlot(slot)
+    setMealText(initialText)
+  }
+
+  const closeEditor = () => {
+    setEditingSlot(null)
+    setMealText('')
+  }
+
   return (
     <section className="card">
       <h2>Meal Plan</h2>
-      <form className="row" onSubmit={addMeal}>
-        <input
-          type="date"
-          value={mealDate}
-          onChange={(event) => setMealDate(event.target.value)}
-          required
-        />
-        <select
-          value={mealType}
-          onChange={(event) => setMealType(event.target.value as (typeof mealTypes)[number])}
-        >
-          {mealTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-        <select value={recipeId} onChange={(event) => setRecipeId(event.target.value)}>
-          <option value="">Choose recipe</option>
-          {recipes.map((recipe) => (
-            <option key={recipe.id} value={recipe.id}>
-              {recipe.title}
-            </option>
-          ))}
-        </select>
-        <button type="submit">Plan Meal</button>
-      </form>
-      <ul className="list">
-        {entries.map((entry) => (
-          <li key={entry.id}>
-            <span>
-              <strong>{entry.meal_date}</strong>  {entry.meal_type}  {entry.recipe_title ?? 'Unplanned meal'}
-            </span>
-            <button type="button" className="ghost" onClick={() => remove(entry.id)}>
-              Remove
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="row week-controls">
+        <button type="button" className="ghost" onClick={() => setWeekOffset((value) => value - 1)}>
+          Previous Week
+        </button>
+        <p>
+          {weekStart.format('D MMM')} - {weekStart.add(6, 'day').format('D MMM')}
+        </p>
+        <button type="button" className="ghost" onClick={() => setWeekOffset(0)}>
+          This Week
+        </button>
+        <button type="button" className="ghost" onClick={() => setWeekOffset((value) => value + 1)}>
+          Next Week
+        </button>
+      </div>
+
+      <div className="meal-week-grid">
+        {weekDays.map((day) => {
+          const dayLabel = day.format('ddd')
+          const dayKey = day.format('YYYY-MM-DD')
+          return (
+            <article key={dayKey} className="meal-day-block">
+              <header>
+                <strong>{dayLabel}</strong>
+                <span>{day.format('D MMM')}</span>
+              </header>
+              {mealTypes.map((type) => {
+                const entry = entries.find(
+                  (mealEntry) => mealEntry.meal_date === dayKey && mealEntry.meal_type === type,
+                )
+                return (
+                  <div key={`${dayKey}-${type}`} className="meal-slot">
+                    <p className="meal-slot-title">{type}</p>
+                    {entry ? (
+                      <div className="meal-slot-content">
+                        <span>{entry.recipe_title ?? 'Unplanned meal'}</span>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            openEditor({ mealDate: dayKey, mealType: type }, entry.recipe_title ?? '')
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button type="button" className="ghost" onClick={() => remove(entry.id)}>
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="meal-slot-content">
+                        <p className="meal-empty">Not planned</p>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            openEditor({ mealDate: dayKey, mealType: type }, '')
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </article>
+          )
+        })}
+      </div>
+
+      {editingSlot ? (
+        <div className="modal-overlay" onClick={closeEditor}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>
+              Edit {editingSlot.mealType} {dayjs(editingSlot.mealDate).format('D MMM')}
+            </h3>
+            <form className="stack" onSubmit={addMeal}>
+              <input
+                type="text"
+                list="recipe-suggestions"
+                autoFocus
+                placeholder="Type meal or recipe"
+                value={mealText}
+                onChange={(event) => setMealText(event.target.value)}
+                required
+              />
+              <datalist id="recipe-suggestions">
+                {recipes.map((recipe) => (
+                  <option key={recipe.id} value={recipe.title} />
+                ))}
+              </datalist>
+              <div className="row">
+                <button type="submit">Add</button>
+                <button type="button" className="ghost" onClick={closeEditor}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -964,7 +1086,7 @@ function TodoSection({
 
   return (
     <section className="card">
-      <h2>Weekly / Daily Todos</h2>
+      <h2>Weekly / Daily To-Do's</h2>
       <form className="stack" onSubmit={addTodo}>
         <div className="row">
           <input
@@ -1055,6 +1177,18 @@ function AdminSuite({
 }) {
   const [newHouseholdName, setNewHouseholdName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
+
+  const selectedHousehold = useMemo(
+    () => households.find((household) => household.id === selectedHouseholdId) ?? null,
+    [households, selectedHouseholdId],
+  )
+
+  useEffect(() => {
+    setShowDeleteConfirm(false)
+    setDeleteConfirmName('')
+  }, [selectedHouseholdId])
 
   const createHousehold = async (event: FormEvent) => {
     event.preventDefault()
@@ -1086,6 +1220,8 @@ function AdminSuite({
     onStatus('Household deleted.')
     await onRefreshHouseholds()
     onSelectHousehold('')
+    setShowDeleteConfirm(false)
+    setDeleteConfirmName('')
   }
 
   const createInvite = async (event: FormEvent) => {
@@ -1158,11 +1294,39 @@ function AdminSuite({
           ))}
         </select>
         {selectedHouseholdId ? (
-          <button type="button" className="ghost" onClick={() => deleteHousehold(selectedHouseholdId)}>
-            Delete Household
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setShowDeleteConfirm((current) => !current)}
+          >
+            {showDeleteConfirm ? 'Cancel Delete' : 'Delete Household'}
           </button>
         ) : null}
       </div>
+
+      {selectedHouseholdId && showDeleteConfirm && selectedHousehold ? (
+        <div className="card delete-guard">
+          <p>
+            Type <strong>{selectedHousehold.name}</strong> to confirm deletion.
+          </p>
+          <div className="row">
+            <input
+              type="text"
+              placeholder="Confirm household name"
+              value={deleteConfirmName}
+              onChange={(event) => setDeleteConfirmName(event.target.value)}
+            />
+            <button
+              type="button"
+              className="danger"
+              disabled={deleteConfirmName.trim() !== selectedHousehold.name}
+              onClick={() => deleteHousehold(selectedHouseholdId)}
+            >
+              Confirm Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {selectedHouseholdId ? (
         <>
