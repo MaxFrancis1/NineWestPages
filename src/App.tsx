@@ -658,6 +658,7 @@ function ShoppingSection({
   onRefresh: () => Promise<void>
   onError: (value: string) => void
 }) {
+  const [showAddModal, setShowAddModal] = useState(false)
   const [title, setTitle] = useState('')
   const [quantity, setQuantity] = useState('')
 
@@ -681,6 +682,7 @@ function ShoppingSection({
 
     setTitle('')
     setQuantity('')
+    setShowAddModal(false)
     await onRefresh()
   }
 
@@ -709,22 +711,12 @@ function ShoppingSection({
 
   return (
     <section className="card">
-      <h2>Shopping List</h2>
-      <form className="row" onSubmit={addItem}>
-        <input
-          type="text"
-          placeholder="Add item"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <input
-          type="text"
-          placeholder="Qty (optional)"
-          value={quantity}
-          onChange={(event) => setQuantity(event.target.value)}
-        />
-        <button type="submit">Add</button>
-      </form>
+      <div className="row section-head">
+        <h2>Shopping List</h2>
+        <button type="button" onClick={() => setShowAddModal(true)}>
+          Add Item
+        </button>
+      </div>
       <ul className="list">
         {items.map((item) => (
           <li key={item.id} className={item.is_complete ? 'done' : ''}>
@@ -739,6 +731,36 @@ function ShoppingSection({
           </li>
         ))}
       </ul>
+
+      {showAddModal ? (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Add Shopping Item</h3>
+            <form className="stack" onSubmit={addItem}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Add item"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Qty (optional)"
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+              />
+              <div className="row">
+                <button type="submit">Add</button>
+                <button type="button" className="ghost" onClick={() => setShowAddModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -759,6 +781,18 @@ function RecipesSection({
   const [servings, setServings] = useState('')
   const [ingredients, setIngredients] = useState('')
   const [method, setMethod] = useState('')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [search, setSearch] = useState('')
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
+
+  const filteredRecipes = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) {
+      return recipes
+    }
+
+    return recipes.filter((recipe) => recipe.title.toLowerCase().includes(query))
+  }, [recipes, search])
 
   const addRecipe = async (event: FormEvent) => {
     event.preventDefault()
@@ -788,6 +822,7 @@ function RecipesSection({
     setServings('')
     setIngredients('')
     setMethod('')
+    setShowCreateModal(false)
     await onRefresh()
   }
 
@@ -800,78 +835,125 @@ function RecipesSection({
     await onRefresh()
   }
 
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((current) => ({
+      ...current,
+      [id]: !current[id],
+    }))
+  }
+
   return (
     <section className="card">
-      <h2>Recipes</h2>
-      <form className="stack" onSubmit={addRecipe}>
-        <div className="row">
-          <input
-            type="text"
-            placeholder="Recipe name"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-          <input
-            type="number"
-            min={1}
-            placeholder="Servings"
-            value={servings}
-            onChange={(event) => setServings(event.target.value)}
-          />
-        </div>
-        <input
-          type="url"
-          placeholder="Source URL"
-          value={sourceUrl}
-          onChange={(event) => setSourceUrl(event.target.value)}
-        />
-        <textarea
-          placeholder="Ingredients (one per line)"
-          value={ingredients}
-          onChange={(event) => setIngredients(event.target.value)}
-          rows={4}
-        />
-        <textarea
-          placeholder="Method"
-          value={method}
-          onChange={(event) => setMethod(event.target.value)}
-          rows={3}
-        />
-        <button type="submit">Save Recipe</button>
-      </form>
+      <div className="row section-head">
+        <h2>Recipes</h2>
+        <button type="button" onClick={() => setShowCreateModal(true)}>
+          Add Recipe
+        </button>
+      </div>
+      <input
+        type="text"
+        placeholder="Search recipes by name"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
       <ul className="list">
-        {recipes.map((recipe) => (
-          <li key={recipe.id}>
-            <div>
-              <strong>{recipe.title}</strong>
-              {recipe.servings ? <span>  Serves {recipe.servings}</span> : null}
-              {recipe.source_url ? (
-                <span>
-                  {' '}
-                   <a href={recipe.source_url}>link</a>
-                </span>
-              ) : null}
-              {recipe.ingredients ? (
-                <p>
-                  <strong>Ingredients:</strong>
-                  <br />
-                  {recipe.ingredients}
-                </p>
-              ) : null}
-              {recipe.method || recipe.notes ? (
-                <p>
-                  <strong>Method:</strong>
-                  <br />
-                  {recipe.method ?? recipe.notes}
-                </p>
-              ) : null}
-            </div>
-            <button type="button" className="ghost" onClick={() => remove(recipe.id)}>
-              Remove
-            </button>
-          </li>
-        ))}
+        {filteredRecipes.map((recipe) => {
+          const isExpanded = Boolean(expandedIds[recipe.id])
+          return (
+            <li key={recipe.id} className="recipe-item">
+              <div className="recipe-main">
+                <div className="recipe-title-row">
+                  <strong>{recipe.title}</strong>
+                  {recipe.servings ? <span>Serves {recipe.servings}</span> : null}
+                </div>
+                {isExpanded ? (
+                  <div className="recipe-details">
+                    {recipe.source_url ? (
+                      <p>
+                        <strong>Source:</strong> <a href={recipe.source_url}>Open Link</a>
+                      </p>
+                    ) : null}
+                    {recipe.ingredients ? (
+                      <p>
+                        <strong>Ingredients:</strong>
+                        <br />
+                        {recipe.ingredients}
+                      </p>
+                    ) : null}
+                    {recipe.method || recipe.notes ? (
+                      <p>
+                        <strong>Method:</strong>
+                        <br />
+                        {recipe.method ?? recipe.notes}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="recipe-actions">
+                <button type="button" className="ghost" onClick={() => toggleExpanded(recipe.id)}>
+                  {isExpanded ? 'Collapse' : 'Expand'}
+                </button>
+                <button type="button" className="ghost" onClick={() => remove(recipe.id)}>
+                  Remove
+                </button>
+              </div>
+            </li>
+          )
+        })}
+        {filteredRecipes.length === 0 ? <li>No recipes found</li> : null}
       </ul>
+
+      {showCreateModal ? (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Add Recipe</h3>
+            <form className="stack" onSubmit={addRecipe}>
+              <div className="row">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Recipe name"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Servings"
+                  value={servings}
+                  onChange={(event) => setServings(event.target.value)}
+                />
+              </div>
+              <input
+                type="url"
+                placeholder="Source URL"
+                value={sourceUrl}
+                onChange={(event) => setSourceUrl(event.target.value)}
+              />
+              <textarea
+                placeholder="Ingredients (one per line)"
+                value={ingredients}
+                onChange={(event) => setIngredients(event.target.value)}
+                rows={4}
+              />
+              <textarea
+                placeholder="Method"
+                value={method}
+                onChange={(event) => setMethod(event.target.value)}
+                rows={3}
+              />
+              <div className="row">
+                <button type="submit">Save Recipe</button>
+                <button type="button" className="ghost" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -1302,6 +1384,8 @@ function AdminSuite({
 }) {
   const [newHouseholdName, setNewHouseholdName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
+  const [showHouseholdModal, setShowHouseholdModal] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmName, setDeleteConfirmName] = useState('')
 
@@ -1331,6 +1415,7 @@ function AdminSuite({
     }
 
     setNewHouseholdName('')
+    setShowHouseholdModal(false)
     onStatus('Household created.')
     await onRefreshHouseholds()
   }
@@ -1373,6 +1458,7 @@ function AdminSuite({
     await navigator.clipboard.writeText(inviteLink)
     onStatus(`Invite link copied for ${inviteEmail}.`)
     setInviteEmail('')
+    setShowInviteModal(false)
     await onRefreshSelected()
   }
 
@@ -1399,15 +1485,9 @@ function AdminSuite({
       <h2>Admin Suite</h2>
       <p>System admins can create households, invite members, and manage membership.</p>
 
-      <form className="row" onSubmit={createHousehold}>
-        <input
-          type="text"
-          placeholder="New household name"
-          value={newHouseholdName}
-          onChange={(event) => setNewHouseholdName(event.target.value)}
-        />
-        <button type="submit">Create Household</button>
-      </form>
+      <button type="button" onClick={() => setShowHouseholdModal(true)}>
+        Create Household
+      </button>
 
       <div className="row">
         <select value={selectedHouseholdId} onChange={(event) => onSelectHousehold(event.target.value)}>
@@ -1455,15 +1535,9 @@ function AdminSuite({
 
       {selectedHouseholdId ? (
         <>
-          <form className="row" onSubmit={createInvite}>
-            <input
-              type="email"
-              placeholder="Invite email"
-              value={inviteEmail}
-              onChange={(event) => setInviteEmail(event.target.value)}
-            />
-            <button type="submit">Create Invite</button>
-          </form>
+          <button type="button" onClick={() => setShowInviteModal(true)}>
+            Create Invite
+          </button>
 
           <h3>Members</h3>
           <ul className="list">
@@ -1493,6 +1567,54 @@ function AdminSuite({
             {selectedInvites.length === 0 ? <li>No pending invites</li> : null}
           </ul>
         </>
+      ) : null}
+
+      {showHouseholdModal ? (
+        <div className="modal-overlay" onClick={() => setShowHouseholdModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Create Household</h3>
+            <form className="stack" onSubmit={createHousehold}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="New household name"
+                value={newHouseholdName}
+                onChange={(event) => setNewHouseholdName(event.target.value)}
+                required
+              />
+              <div className="row">
+                <button type="submit">Create</button>
+                <button type="button" className="ghost" onClick={() => setShowHouseholdModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showInviteModal && selectedHouseholdId ? (
+        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Create Invite</h3>
+            <form className="stack" onSubmit={createInvite}>
+              <input
+                type="email"
+                autoFocus
+                placeholder="Invite email"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+                required
+              />
+              <div className="row">
+                <button type="submit">Create Invite</button>
+                <button type="button" className="ghost" onClick={() => setShowInviteModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       ) : null}
     </section>
   )
