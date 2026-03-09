@@ -784,6 +784,12 @@ function RecipesSection({
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({})
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editSourceUrl, setEditSourceUrl] = useState('')
+  const [editServings, setEditServings] = useState('')
+  const [editIngredients, setEditIngredients] = useState('')
+  const [editMethod, setEditMethod] = useState('')
 
   const filteredRecipes = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -842,6 +848,48 @@ function RecipesSection({
     }))
   }
 
+  const openEditModal = (recipe: Recipe) => {
+    setEditingRecipe(recipe)
+    setEditTitle(recipe.title)
+    setEditSourceUrl(recipe.source_url ?? '')
+    setEditServings(recipe.servings != null ? String(recipe.servings) : '')
+    setEditIngredients(recipe.ingredients ?? '')
+    setEditMethod(recipe.method ?? recipe.notes ?? '')
+  }
+
+  const closeEditModal = () => {
+    setEditingRecipe(null)
+  }
+
+  const updateRecipe = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!editingRecipe || !editTitle.trim()) {
+      return
+    }
+
+    const parsedServings = Number(editServings)
+
+    const { error } = await supabase
+      .from('recipes')
+      .update({
+        title: editTitle.trim(),
+        source_url: editSourceUrl.trim() || null,
+        servings: Number.isFinite(parsedServings) && parsedServings > 0 ? parsedServings : null,
+        ingredients: editIngredients.trim() || null,
+        method: editMethod.trim() || null,
+        notes: editMethod.trim() || null,
+      })
+      .eq('id', editingRecipe.id)
+
+    if (error) {
+      onError(error.message)
+      return
+    }
+
+    closeEditModal()
+    await onRefresh()
+  }
+
   return (
     <section className="card">
       <div className="row section-head">
@@ -867,32 +915,35 @@ function RecipesSection({
                   {recipe.servings ? <span>Serves {recipe.servings}</span> : null}
                 </div>
                 {isExpanded ? (
-                  <div className="recipe-details">
-                    {recipe.source_url ? (
-                      <p>
-                        <strong>Source:</strong> <a href={recipe.source_url}>Open Link</a>
-                      </p>
-                    ) : null}
-                    {recipe.ingredients ? (
-                      <p>
-                        <strong>Ingredients:</strong>
-                        <br />
-                        {recipe.ingredients}
-                      </p>
-                    ) : null}
-                    {recipe.method || recipe.notes ? (
-                      <p>
-                        <strong>Method:</strong>
-                        <br />
-                        {recipe.method ?? recipe.notes}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
+                   <div className="recipe-details">
+                     {recipe.source_url ? (
+                       <p>
+                         <strong>Source:</strong> <a href={recipe.source_url}>Open Link</a>
+                       </p>
+                     ) : null}
+                     {recipe.ingredients ? (
+                       <p>
+                         <strong>Ingredients:</strong>
+                         <br />
+                         <span className="recipe-preformatted">{recipe.ingredients}</span>
+                       </p>
+                     ) : null}
+                     {recipe.method || recipe.notes ? (
+                       <p>
+                         <strong>Method:</strong>
+                         <br />
+                         <span className="recipe-preformatted">{recipe.method ?? recipe.notes}</span>
+                       </p>
+                     ) : null}
+                   </div>
+                 ) : null}
               </div>
               <div className="recipe-actions">
                 <button type="button" className="ghost" onClick={() => toggleExpanded(recipe.id)}>
                   {isExpanded ? 'Collapse' : 'Expand'}
+                </button>
+                <button type="button" className="ghost" onClick={() => openEditModal(recipe)}>
+                  Edit
                 </button>
                 <button type="button" className="ghost" onClick={() => remove(recipe.id)}>
                   Remove
@@ -947,6 +998,57 @@ function RecipesSection({
               <div className="row">
                 <button type="submit">Save Recipe</button>
                 <button type="button" className="ghost" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingRecipe ? (
+        <div className="modal-overlay" onClick={closeEditModal}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>Edit Recipe</h3>
+            <form className="stack" onSubmit={updateRecipe}>
+              <div className="row">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Recipe name"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  required
+                />
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Servings"
+                  value={editServings}
+                  onChange={(event) => setEditServings(event.target.value)}
+                />
+              </div>
+              <input
+                type="url"
+                placeholder="Source URL"
+                value={editSourceUrl}
+                onChange={(event) => setEditSourceUrl(event.target.value)}
+              />
+              <textarea
+                placeholder="Ingredients (one per line)"
+                value={editIngredients}
+                onChange={(event) => setEditIngredients(event.target.value)}
+                rows={4}
+              />
+              <textarea
+                placeholder="Method"
+                value={editMethod}
+                onChange={(event) => setEditMethod(event.target.value)}
+                rows={3}
+              />
+              <div className="row">
+                <button type="submit">Save Changes</button>
+                <button type="button" className="ghost" onClick={closeEditModal}>
                   Cancel
                 </button>
               </div>

@@ -355,6 +355,10 @@ input[type='checkbox'] {
   margin: 0.45rem 0 0;
 }
 
+.recipe-preformatted {
+  white-space: pre-wrap;
+}
+
 .recipe-actions {
   display: grid;
   gap: 0.35rem;
